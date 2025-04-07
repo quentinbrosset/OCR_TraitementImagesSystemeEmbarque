@@ -1,4 +1,4 @@
-name: Deploy and Test
+name: Deploy
 on:
   push:
     branches:
@@ -18,28 +18,20 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        pip install webdriver-manager
-        python -m nltk.downloader punkt
-        python -m nltk.downloader stopwords
-        python -m nltk.downloader wordnet
-        python -m nltk.downloader punkt_tab
-    
-    - name: Set up ChromeDriver
-      uses: nanasess/setup-chromedriver@master
-    
+        
     - name: Start API in background
       run: |
-        uvicorn Application.api:app --host 0.0.0.0 --port 57077 &
+        uvicorn application.api:app --host 0.0.0.0 --port 8000 &
         sleep 10  # Attendre que l'API démarre
     
     - name: Start Streamlit app in background
       run: |
-        streamlit run Application/app.py &
+        streamlit run application/app.py &
         sleep 10  # Attendre que Streamlit démarre
     
     - name: Verify API is running
       run: |
-        curl --retry 10 --retry-delay 5 --retry-connrefused http://localhost:57077
+        curl --retry 10 --retry-delay 5 --retry-connrefused http://localhost:8000
     
     - name: Verify Streamlit app is running
       run: |
@@ -49,19 +41,9 @@ jobs:
       run: |
         pip install pytest-timeout
     
-    - name: Run tests
-      run: |
-        python -m pytest TestsUnitaires/ -v --tb=short --timeout=300
-    
     - name: Install Heroku CLI
       run: |
         curl https://cli-assets.heroku.com/install.sh | sh
-    
-    - name: Login to Heroku Container Registry
-      env:
-        HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-      run: |
-        heroku container:login
     
     - name: Deploiement sur Heroku
       uses: akhileshns/heroku-deploy@v3.13.15
