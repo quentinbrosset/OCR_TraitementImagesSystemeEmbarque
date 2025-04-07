@@ -10,7 +10,7 @@ import cv2
 import io
 from pathlib import Path
 
-# Définir les composants du modèle (inchangé)
+# Définir les composants du modèle
 class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(DoubleConv, self).__init__()
@@ -150,31 +150,19 @@ class_mapping = {
     7: 7   # Gris clair -> Vehicle
 }
 
-# Fonction inverse du mapping (pour reconvertir si nécessaire)
-inverse_mapping = {v: k for k, v in class_mapping.items()}
-
-# Fonction pour appliquer le mapping à un masque
-def apply_mapping(mask):
-    mapped_mask = np.zeros_like(mask)
-    for old_class, new_class in class_mapping.items():
-        mapped_mask[mask == old_class] = new_class
-    return mapped_mask
-
 # Nom des catégories
 class_names = [
     "Void", "Flat", "Construction", "Object",
     "Nature", "Sky", "Human", "Vehicle"
 ]
 
+# Fonction pour calculer l'IoU
 def calculate_iou(pred_mask, true_mask, num_classes):
-    # Appliquer le remappage au masque de prédiction
-    pred_mask_remapped = apply_mapping(pred_mask)
-    
     iou_list = []
 
-    # Calculer IoU pour chaque classe cible (après remappage)
+    # Calculer IoU pour chaque classe
     for cls in range(num_classes):
-        pred_inds = pred_mask_remapped == cls
+        pred_inds = pred_mask == cls
         target_inds = true_mask == cls
 
         intersection = np.logical_and(pred_inds, target_inds).sum()
@@ -185,30 +173,16 @@ def calculate_iou(pred_mask, true_mask, num_classes):
 
     return np.mean(iou_list)   # Retourne la moyenne des IoU
 
-# Fonction pour appliquer le mapping à un tenseur PyTorch
-def apply_mapping_torch(tensor):
-    # Créer un tenseur de sortie de même forme
-    mapped_tensor = torch.zeros_like(tensor)
-    
-    # Appliquer le mapping
-    for old_class, new_class in class_mapping.items():
-        mapped_tensor[tensor == old_class] = new_class
-        
-    return mapped_tensor
-
-# Fonction pour calculer le coefficient de Dice avec remappage
+# Fonction pour calculer le coefficient de Dice
 def calculate_dice_coefficient(outputs, targets, num_classes):
     dice_list = []
 
     # Obtenir les prédictions
     outputs = torch.argmax(outputs, dim=1)
-    
-    # Appliquer le remappage aux sorties
-    outputs_remapped = apply_mapping_torch(outputs)
 
-    # Calculer Dice pour chaque classe cible
+    # Calculer Dice pour chaque classe
     for cls in range(num_classes):
-        pred_inds = outputs_remapped == cls
+        pred_inds = outputs == cls
         target_inds = targets == cls
 
         intersection = (pred_inds & target_inds).float().sum().item()
@@ -218,7 +192,7 @@ def calculate_dice_coefficient(outputs, targets, num_classes):
         dice = (2.0 * intersection) / (pred_sum + target_sum + 1e-8)
         dice_list.append(dice)
 
-    return sum(dice_list) / len(dice_list)   # Retourne la m
+    return sum(dice_list) / len(dice_list)   # Retourne la moyenne des coefficients Dice
 
 @app.post("/predict/")
 async def predict_segmentation(file: UploadFile = File(...), mask_file: UploadFile = None):
@@ -257,9 +231,6 @@ async def predict_segmentation(file: UploadFile = File(...), mask_file: UploadFi
         mask_contents = await mask_file.read()
         true_mask = Image.open(io.BytesIO(mask_contents)).convert("L")
         true_mask = np.array(true_mask)
-        # Si vos masques réels sont déjà bien encodés, vous n'avez PAS besoin de remapper ici.
-        # Si ce n'est pas le cas, vous devrez créer une fonction de remappage basée sur les niveaux de gris.
-        # true_mask_remapped = remap_real_mask_values(true_mask)
         iou = calculate_iou(remapped_predicted_mask_resized, true_mask, num_classes=8)
         dice = calculate_dice_coefficient(output, torch.tensor(true_mask).unsqueeze(0).to(device), num_classes=8)
 
