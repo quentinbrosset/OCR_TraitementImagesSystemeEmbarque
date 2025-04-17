@@ -10,7 +10,7 @@ import cv2
 import io
 from pathlib import Path
 
-# Définir les composants du modèle
+# Définir les composants du modèle (inchangé)
 class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(DoubleConv, self).__init__()
@@ -173,7 +173,7 @@ def calculate_iou(pred_mask, true_mask, num_classes):
 
     return np.mean(iou_list)   # Retourne la moyenne des IoU
 
-# Fonction pour calculer le coefficient de Dice
+# Fonction pour calculer le coefficient de Dice - MODIFIÉE
 def calculate_dice_coefficient(outputs, targets, num_classes):
     dice_list = []
 
@@ -182,17 +182,45 @@ def calculate_dice_coefficient(outputs, targets, num_classes):
 
     # Calculer Dice pour chaque classe
     for cls in range(num_classes):
-        pred_inds = outputs == cls
-        target_inds = targets == cls
-
-        intersection = (pred_inds & target_inds).float().sum().item()
-        pred_sum = pred_inds.float().sum().item()
-        target_sum = target_inds.float().sum().item()
-
-        dice = (2.0 * intersection) / (pred_sum + target_sum + 1e-8)
+        pred_inds = (outputs == cls)
+        target_inds = (targets == cls)
+        
+        intersection = torch.logical_and(pred_inds, target_inds).sum().item()
+        union = pred_inds.sum().item() + target_inds.sum().item()
+        
+        dice = (2.0 * intersection) / (union + 1e-8)
         dice_list.append(dice)
 
     return sum(dice_list) / len(dice_list)   # Retourne la moyenne des coefficients Dice
+
+# Fonction pour remapper un masque en niveaux de gris aux classes du modèle
+def remap_mask_to_classes(mask_array):
+    # Mapping explicite des niveaux de gris aux indices de classe
+    gray_to_class = {
+        0: 0,
+        15: 1,
+        38: 2,
+        53: 3,
+        75: 4,
+        90: 5,
+        113: 6,
+        128: 7
+    }
+
+    remapped_mask = np.zeros_like(mask_array, dtype=np.uint8)
+
+    unknown_values = []
+
+    for gray_value in np.unique(mask_array):
+        if gray_value in gray_to_class:
+            remapped_mask[mask_array == gray_value] = gray_to_class[gray_value]
+        else:
+            unknown_values.append(gray_value)
+    
+    if unknown_values:
+        print(f"[WARN] Valeurs inconnues détectées dans le masque : {unknown_values}")
+
+    return remapped_mask
 
 @app.post("/predict/")
 async def predict_segmentation(file: UploadFile = File(...), mask_file: UploadFile = None):
@@ -229,10 +257,28 @@ async def predict_segmentation(file: UploadFile = File(...), mask_file: UploadFi
 
     if mask_file is not None:
         mask_contents = await mask_file.read()
-        true_mask = Image.open(io.BytesIO(mask_contents)).convert("L")
-        true_mask = np.array(true_mask)
-        iou = calculate_iou(remapped_predicted_mask_resized, true_mask, num_classes=8)
-        dice = calculate_dice_coefficient(output, torch.tensor(true_mask).unsqueeze(0).to(device), num_classes=8)
+        true_mask_img = Image.open(io.BytesIO(mask_contents))
+
+        # Vérifier le mode du masque et le convertir si nécessaire
+        if true_mask_img.mode not in ["L", "P", "1"]:
+            true_mask_img = true_mask_img.convert("L")
+
+        # Redimensionner le masque à la taille d'inférence
+        true_mask_img_resized = true_mask_img.resize((512, 256), Image.NEAREST)
+
+        true_mask = np.array(true_mask_img_resized)
+
+        # Remap du masque réel aux classes du modèle
+        true_mask_remapped = remap_mask_to_classes(true_mask)
+
+        # Pour le calcul du Dice, convertir les deux masques en tenseur PyTorch
+        true_mask_tensor = torch.tensor(true_mask_remapped).unsqueeze(0).to(device)
+
+        # Calculer IoU
+        iou = calculate_iou(predicted_mask_raw, true_mask_remapped, num_classes=8)
+
+        # Calculer Dice
+        dice = calculate_dice_coefficient(output, true_mask_tensor, num_classes=8)
 
     pixel_counts = {}
     total_pixels = remapped_predicted_mask_resized.size
@@ -250,6 +296,7 @@ async def predict_segmentation(file: UploadFile = File(...), mask_file: UploadFi
         "iou": iou,
         "dice": dice
     }
+
 
 @app.post("/predict_with_mask/")
 async def predict_with_mask(file: UploadFile = File(...)):
@@ -303,7 +350,7 @@ async def overlay_mask(file: UploadFile = File(...), alpha: float = 0.5):
     contents = await file.read()
     image_pil = Image.open(io.BytesIO(contents)).convert("RGB")
     original_size = image_pil.size
-    image = np.array(image_pil)
+    image = np.array(image_pil)  # RGB format
 
     input_tensor = transform(image_pil).unsqueeze(0).to(device)
 
@@ -312,7 +359,7 @@ async def overlay_mask(file: UploadFile = File(...), alpha: float = 0.5):
 
     predicted_mask_raw = torch.argmax(output, dim=1).squeeze().cpu().numpy()
 
-    # Appliquer le remappage au masque prédit
+    # Remap des classes comme dans /predict_with_mask/
     remapped_mask = np.zeros_like(predicted_mask_raw, dtype=np.uint8)
     for predicted_class_index, real_class_index in class_mapping.items():
         remapped_mask[predicted_mask_raw == predicted_class_index] = real_class_index
@@ -324,19 +371,18 @@ async def overlay_mask(file: UploadFile = File(...), alpha: float = 0.5):
         interpolation=cv2.INTER_NEAREST
     )
 
-    # Créer une image colorée du masque remappé
+    # Créer une image colorée du masque remappé (fidèle au 1er endpoint)
     colored_mask = np.zeros((remapped_mask_resized.shape[0], remapped_mask_resized.shape[1], 3), dtype=np.uint8)
     for class_idx in range(len(color_palette)):
         colored_mask[remapped_mask_resized == class_idx] = color_palette[class_idx]
 
-    # Superposer le masque sur l'image originale
+    # Superposer le masque colorisé sur l'image originale
     overlay = cv2.addWeighted(image, 1 - alpha, colored_mask, alpha, 0)
 
-    # Convertir l'image superposée en PNG
-    _, encoded_overlay = cv2.imencode('.png', cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
+    # Pas de conversion RGB → BGR 
+    _, encoded_overlay = cv2.imencode('.png', overlay)
     overlay_bytes = encoded_overlay.tobytes()
 
-    # Retourner l'image avec le masque superposé
     return Response(content=overlay_bytes, media_type="image/png")
 
 if __name__ == "__main__":
