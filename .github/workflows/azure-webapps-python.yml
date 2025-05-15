@@ -15,12 +15,12 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Set up Python version
-        uses: actions/setup-python@v5  # Mise à jour vers la version 5
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
       - name: Cache pip dependencies
-        uses: actions/cache@v4  # Utiliser l'action cache directement
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -32,8 +32,22 @@ jobs:
           python -m venv venv
           source venv/bin/activate
       
+      - name: List directory contents (debug)
+        run: |
+          ls -la
+          echo "Checking for requirements.txt:"
+          if [ -f "requirements.txt" ]; then
+            echo "requirements.txt exists"
+            cat requirements.txt
+          else
+            echo "requirements.txt NOT FOUND"
+          fi
+      
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          source venv/bin/activate
+          pip install -r requirements.txt || echo "Error installing dependencies" && exit 1
+          pip list  # List installed packages for debugging
       
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
@@ -57,6 +71,16 @@ jobs:
         with:
           name: python-app
           path: .
+          
+      - name: List downloaded files (debug)
+        run: |
+          echo "Deployment artifact contents:"
+          ls -la
+          
+      - name: Check Azure configuration
+        run: |
+          echo "Deploying to webapp: ${{ env.AZURE_WEBAPP_NAME }}"
+          echo "Checking if AZURE_WEBAPP_PUBLISH_PROFILE is set: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE != '' }}"
       
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
@@ -64,3 +88,4 @@ jobs:
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+        continue-on-error: false  # Force the workflow to stop with error if this step fails
