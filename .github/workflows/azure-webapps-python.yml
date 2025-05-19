@@ -1,7 +1,7 @@
 name: Build and deploy Python app to Azure Web App
 env:
-  AZURE_WEBAPP_NAME: SegmentationImages  # set this to the name of your Azure Web App
-  PYTHON_VERSION: '3.12'              # set this to the Python version to use
+  AZURE_WEBAPP_NAME: SegmentationImages  # nom correct de l'application
+  PYTHON_VERSION: '3.12'              # version Python à utiliser
 on:
   push:
     branches: [ "main" ]
@@ -75,13 +75,16 @@ jobs:
             pip list
           fi
       
+      - name: Create deployment package
+        run: |
+          zip -r deployment.zip . -x "venv/*"
+      
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
         with:
           name: python-app
           path: |
-            .
-            !venv/
+            deployment.zip
   
   deploy:
     permissions:
@@ -92,15 +95,28 @@ jobs:
       name: 'Development'
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     steps:
+      - name: 'Enable GitHub Actions debug logging'
+        run: |
+          echo "ACTIONS_RUNNER_DEBUG=true" >> $GITHUB_ENV
+          echo "ACTIONS_STEP_DEBUG=true" >> $GITHUB_ENV
+          
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
           name: python-app
           path: .
       
-      - name: 'Deploy to Azure Web App'
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v2
+      - name: 'Login to Azure'
+        uses: azure/login@v1
         with:
-          app-name: ${{ env.AZURE_WEBAPP_NAME }}
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: 'Deploy to Azure Web App using CLI'
+        run: |
+          az webapp deployment source config-zip --resource-group <VOTRE_GROUPE_RESSOURCES> --name ${{ env.AZURE_WEBAPP_NAME }} --src ./deployment.zip
+      
+      - name: 'Get deployment URL'
+        id: deploy-to-webapp
+        run: |
+          WEBAPP_URL=$(az webapp show --name ${{ env.AZURE_WEBAPP_NAME }} --resource-group <VOTRE_GROUPE_RESSOURCES> --query "defaultHostName" -o tsv)
+          echo "webapp-url=https://$WEBAPP_URL" >> $GITHUB_OUTPUT
