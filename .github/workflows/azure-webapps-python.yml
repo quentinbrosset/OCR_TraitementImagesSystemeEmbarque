@@ -1,7 +1,9 @@
 name: Build and deploy Python app to Azure Web App
+
 env:
   AZURE_WEBAPP_NAME: SegmentationImages
   PYTHON_VERSION: '3.12'
+
 on:
   push:
     branches: [ "main" ]
@@ -13,6 +15,7 @@ jobs:
     environment:
       name: 'Development'
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+    
     steps:
       - uses: actions/checkout@v4
       
@@ -33,32 +36,74 @@ jobs:
         run: |
           python -m venv venv
           source venv/bin/activate
+          echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
+          echo "$VIRTUAL_ENV/bin" >> $GITHUB_PATH
       
-      - name: Upgrade pip
+      - name: Upgrade pip and install build tools
         run: |
-          source venv/bin/activate
-          python -m pip install --upgrade pip
-      
-      - name: Install basic dependencies first
-        run: |
-          source venv/bin/activate
-          pip install --upgrade pip setuptools wheel
-          pip list
-      
-      - name: Show requirements.txt
-        run: |
-          echo "Contents of requirements.txt:"
-          cat requirements.txt
+          python -m pip install --upgrade pip setuptools wheel
       
       - name: Install dependencies
         run: |
-          source venv/bin/activate
           pip install -r requirements.txt
+      
+      - name: Check application structure
+        run: |
+          echo "Listing project structure:"
+          find . -type f -name "*.py" | head -20
+          ls -la application/
+      
+      - name: Create startup script
+        run: |
+          cat > startup.sh << 'EOF'
+          #!/bin/bash
+          cd /home/site/wwwroot
+          # Démarrer soit l'API soit l'app Streamlit selon la variable d'environnement
+          if [ "$APP_TYPE" = "api" ]; then
+            echo "Starting FastAPI application..."
+            python -m uvicorn application.api:app --host 0.0.0.0 --port 8000
+          else
+            echo "Starting Streamlit application..."
+            streamlit run application/app.py --server.port 8000 --server.address 0.0.0.0
+          fi
+          EOF
+          chmod +x startup.sh
+      
+      - name: Zip application for deployment
+        run: |
+          # Créer un package de déploiement optimisé
+          mkdir -p deploy_package
+          cp -r application deploy_package/
+          cp requirements.txt deploy_package/
+          cp startup.sh deploy_package/
+          
+          # Créer un web.config pour Azure
+          cat > deploy_package/web.config << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <system.webServer>
+              <handlers>
+                <add name="PythonHandler" path="*" verb="*" modules="httpPlatformHandler" resourceType="Unspecified"/>
+              </handlers>
+              <httpPlatform processPath="%HOME%\site\wwwroot\startup.sh"
+                            arguments=""
+                            stdoutLogEnabled="true"
+                            stdoutLogFile="%HOME%\LogFiles\stdout.log"
+                            startupTimeLimit="60"
+                            requestTimeout="23:00:00">
+              </httpPlatform>
+            </system.webServer>
+          </configuration>
+          EOF
+          
+          cd deploy_package
+          zip -r ../deployment.zip .
+          cd ..
       
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
-        uses: azure/webapps-deploy@v2
+        uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: .
+          package: deployment.zip
