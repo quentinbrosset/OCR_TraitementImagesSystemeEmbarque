@@ -39,22 +39,6 @@ def main():
 if __name__ == "__main__":
     main()
 
-# requirements.txt optimisé pour Azure
-requirements_content = """
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-streamlit==1.28.1
-torch==2.1.1
-torchvision==0.16.1
-Pillow==10.1.0
-numpy==1.24.3
-opencv-python-headless==4.8.1.78
-pandas==2.1.3
-matplotlib==3.8.2
-requests==2.31.0
-python-multipart==0.0.6
-"""
-
 # .streamlit/config.toml - Configuration Streamlit
 streamlit_config = """
 [server]
