@@ -167,10 +167,10 @@ jobs:
       - name: 'Vérifier le statut final du déploiement'
         run: |
           if [[ "${{ steps.deploy-to-webapp.outcome }}" == "success" ]]; then
-            echo "✅ Déploiement réussi au premier essai"
+            echo "Déploiement réussi au premier essai"
           elif [[ "${{ steps.deploy-to-webapp-retry.outcome }}" == "success" ]]; then
-            echo "✅ Déploiement réussi au deuxième essai"
+            echo "Déploiement réussi au deuxième essai"
           else
-            echo "✅ Déploiement réussi au troisième essai"
+            echo "Déploiement réussi au troisième essai"
           fi
-          echo "🚀 Application déployée sur : https://segmentationimages-e6frgbbva2d3bebs.francecentral-01.azurewebsites.net"
+          echo "Application déployée sur : https://segmentationimages-e6frgbbva2d3bebs.francecentral-01.azurewebsites.net"
