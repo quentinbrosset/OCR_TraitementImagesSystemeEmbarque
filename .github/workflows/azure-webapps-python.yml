@@ -49,9 +49,15 @@ jobs:
       
       - name: Check application structure
         run: |
-          echo "Listing project structure:"
-          find . -type f -name "*.py" | head -20
+          echo "📂 Structure du projet (SANS VENV) :"
+          find . -type f -name "*.py" -not -path "./venv/*" | head -20
           ls -la application/
+          
+          echo "🔍 Vérification environnement :"
+          echo "Taille du venv (s'il existe) :"
+          du -sh venv/ 2>/dev/null || echo "Pas de venv trouvé"
+          echo "Fichiers à déployer dans application/ :"
+          find application/ -type f | head -10
       
       - name: Create startup script
         run: |
@@ -72,13 +78,25 @@ jobs:
       
       - name: Zip application for deployment
         run: |
-          # Nettoyer d'abord les anciens fichiers
+          # Nettoyer complètement l'environnement
           rm -rf deploy_package deployment.zip
           
           mkdir -p deploy_package
-          cp -r application deploy_package/
+          
+          # Copier SEULEMENT les fichiers nécessaires (ÉVITER VENV)
+          echo "📂 Copie application/ (sans venv)..."
+          cp -r application/ deploy_package/
+          
+          # SUPPRIMER le venv s'il existe
+          rm -rf deploy_package/application/venv/ 2>/dev/null || true
+          
+          echo "📄 Copie des fichiers de configuration..."
           cp requirements.txt deploy_package/
           cp startup.sh deploy_package/
+          
+          # Nettoyer les fichiers Python indésirables
+          find deploy_package/application/ -name "*.pyc" -delete
+          find deploy_package/application/ -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
           
           # Ajouter un fichier .deployment pour Azure
           cat > deploy_package/.deployment << 'EOF'
@@ -108,13 +126,33 @@ jobs:
           </configuration>
           EOF
           
+          # Vérifier le contenu AVANT compression
+          echo "🔍 Contenu du package :"
+          find deploy_package/ -type f | sort
+          
           cd deploy_package
-          # Exclure les fichiers inutiles du zip
-          zip -r ../deployment.zip . -x "*.pyc" "*/__pycache__/*" "*.git*"
+          # EXCLUSIONS STRICTES (inclus VENV et SITE-PACKAGES)
+          zip -r ../deployment.zip . \
+            -x "*.pyc" \
+            -x "*/__pycache__/*" \
+            -x "*/.git*" \
+            -x "*/.*" \
+            -x "*.log" \
+            -x "*.tmp" \
+            -x "*docker*" \
+            -x "*runner*" \
+            -x "*/venv/*" \
+            -x "venv/*" \
+            -x "*/site-packages/*" \
+            -x "*/lib/python*/*"
           cd ..
           
-          echo "Package créé avec succès"
+          echo "✅ Package créé avec succès (SANS VENV)"
           ls -la deployment.zip
+          
+          # Vérifier le contenu final
+          echo "🔍 Contenu du ZIP final :"
+          unzip -l deployment.zip | head -20
       
       - name: 'Deploy to Azure Web App (Tentative 1)'
         id: deploy-to-webapp
@@ -125,7 +163,6 @@ jobs:
           package: deployment.zip
           clean: true
           restart: true
-          timeout: 600000  # 10 minutes
         continue-on-error: true
 
       - name: 'Attendre avant retry en cas d echec'
@@ -144,7 +181,6 @@ jobs:
           package: deployment.zip
           clean: true
           restart: true
-          timeout: 600000  # 10 minutes
         continue-on-error: true
 
       - name: 'Attendre avant deuxième retry en cas d échec'
@@ -162,7 +198,6 @@ jobs:
           package: deployment.zip
           clean: true
           restart: true
-          timeout: 600000  # 10 minutes
 
       - name: 'Vérifier le statut final du déploiement'
         run: |
