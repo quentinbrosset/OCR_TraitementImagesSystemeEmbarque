@@ -39,29 +39,6 @@ def main():
 if __name__ == "__main__":
     main()
 
-# web.config - Configuration pour Azure Web App
-"""
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <system.webServer>
-    <handlers>
-      <add name="PythonHandler" path="*" verb="*" modules="httpPlatformHandler" resourceType="Unspecified"/>
-    </handlers>
-    <httpPlatform processPath="D:\home\Python\python.exe"
-                  arguments="D:\home\site\wwwroot\startup.py"
-                  stdoutLogEnabled="true"
-                  stdoutLogFile="D:\home\LogFiles\python.log"
-                  startupTimeLimit="60"
-                  requestTimeout="23:00:00">
-      <environmentVariables>
-        <environmentVariable name="PYTHONPATH" value="D:\home\site\wwwroot" />
-        <environmentVariable name="PORT" value="%HTTP_PLATFORM_PORT%" />
-      </environmentVariables>
-    </httpPlatform>
-  </system.webServer>
-</configuration>
-"""
-
 # requirements.txt optimisé pour Azure
 requirements_content = """
 fastapi==0.104.1
