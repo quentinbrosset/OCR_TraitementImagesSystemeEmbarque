@@ -72,12 +72,21 @@ jobs:
       
       - name: Zip application for deployment
         run: |
+          # Nettoyer d'abord les anciens fichiers
+          rm -rf deploy_package deployment.zip
+          
           mkdir -p deploy_package
           cp -r application deploy_package/
           cp requirements.txt deploy_package/
           cp startup.sh deploy_package/
           
-          # Créer un web.config pour Azure
+          # Ajouter un fichier .deployment pour Azure
+          cat > deploy_package/.deployment << 'EOF'
+          [config]
+          command = startup.sh
+          EOF
+          
+          # Créer un web.config optimisé pour Azure
           cat > deploy_package/web.config << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <configuration>
@@ -89,18 +98,25 @@ jobs:
                             arguments=""
                             stdoutLogEnabled="true"
                             stdoutLogFile="%HOME%\LogFiles\stdout.log"
-                            startupTimeLimit="60"
-                            requestTimeout="23:00:00">
+                            startupTimeLimit="120"
+                            requestTimeout="00:04:00">
+                <environmentVariables>
+                  <environmentVariable name="PYTHONPATH" value="%HOME%\site\wwwroot" />
+                </environmentVariables>
               </httpPlatform>
             </system.webServer>
           </configuration>
           EOF
           
           cd deploy_package
-          zip -r ../deployment.zip .
+          # Exclure les fichiers inutiles du zip
+          zip -r ../deployment.zip . -x "*.pyc" "*/__pycache__/*" "*.git*"
           cd ..
+          
+          echo "Package créé avec succès"
+          ls -la deployment.zip
       
-      - name: 'Deploy to Azure Web App'
+      - name: 'Deploy to Azure Web App (Tentative 1)'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
@@ -109,3 +125,52 @@ jobs:
           package: deployment.zip
           clean: true
           restart: true
+          timeout: 600000  # 10 minutes
+        continue-on-error: true
+
+      - name: 'Attendre avant retry en cas d\'échec'
+        if: steps.deploy-to-webapp.outcome == 'failure'
+        run: |
+          echo "Premier déploiement échoué, attente de 30 secondes avant retry..."
+          sleep 30
+
+      - name: 'Deploy to Azure Web App (Tentative 2 - Retry)'
+        if: steps.deploy-to-webapp.outcome == 'failure'
+        id: deploy-to-webapp-retry
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: deployment.zip
+          clean: true
+          restart: true
+          timeout: 600000  # 10 minutes
+        continue-on-error: true
+
+      - name: 'Attendre avant deuxième retry en cas d\'échec'
+        if: steps.deploy-to-webapp-retry.outcome == 'failure'
+        run: |
+          echo "Deuxième déploiement échoué, attente de 60 secondes avant dernier retry..."
+          sleep 60
+
+      - name: 'Deploy to Azure Web App (Tentative 3 - Dernier retry)'
+        if: steps.deploy-to-webapp-retry.outcome == 'failure'
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: deployment.zip
+          clean: true
+          restart: true
+          timeout: 600000  # 10 minutes
+
+      - name: 'Vérifier le statut final du déploiement'
+        run: |
+          if [[ "${{ steps.deploy-to-webapp.outcome }}" == "success" ]]; then
+            echo "✅ Déploiement réussi au premier essai"
+          elif [[ "${{ steps.deploy-to-webapp-retry.outcome }}" == "success" ]]; then
+            echo "✅ Déploiement réussi au deuxième essai"
+          else
+            echo "✅ Déploiement réussi au troisième essai"
+          fi
+          echo "🚀 Application déployée sur : https://segmentationimages-e6frgbbva2d3bebs.francecentral-01.azurewebsites.net"
