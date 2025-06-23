@@ -49,19 +49,9 @@ jobs:
       
       - name: Check application structure
         run: |
-          echo "📂 Structure du projet :"
-          find . -type f -name "*.py" -not -path "./venv/*" | head -20
+          echo "Listing project structure:"
+          find . -type f -name "*.py" | head -20
           ls -la application/
-          
-          echo "🔍 Vérification de l'environnement :"
-          echo "Répertoire de travail actuel :"
-          pwd
-          echo "Contenu du répertoire racine (sans venv) :"
-          ls -la | grep -v venv
-          echo "Taille du répertoire venv (s'il existe) :"
-          du -sh venv/ 2>/dev/null || echo "Pas de répertoire venv trouvé"
-          echo "Vérification des fichiers à déployer :"
-          find application/ -type f | head -10
       
       - name: Create startup script
         run: |
@@ -82,26 +72,13 @@ jobs:
       
       - name: Zip application for deployment
         run: |
-          # Nettoyer complètement l'environnement
+          # Nettoyer d'abord les anciens fichiers
           rm -rf deploy_package deployment.zip
           
-          # Créer un répertoire temporaire propre
           mkdir -p deploy_package
-          
-          # Copier SEULEMENT les fichiers nécessaires (éviter venv/ et autres)
-          echo "📂 Copie des fichiers application..."
-          cp -r application/ deploy_package/
-          
-          # Supprimer le venv s'il existe dans application/
-          rm -rf deploy_package/application/venv/ 2>/dev/null || true
-          
-          echo "📄 Copie des fichiers de configuration..."
+          cp -r application deploy_package/
           cp requirements.txt deploy_package/
           cp startup.sh deploy_package/
-          
-          # Nettoyer le répertoire application des fichiers indésirables
-          find deploy_package/application/ -name "*.pyc" -delete
-          find deploy_package/application/ -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
           
           # Ajouter un fichier .deployment pour Azure
           cat > deploy_package/.deployment << 'EOF'
@@ -131,35 +108,13 @@ jobs:
           </configuration>
           EOF
           
-          # Vérifier le contenu avant compression
-          echo "🔍 Contenu du package de déploiement :"
-          find deploy_package/ -type f | sort
-          
-          # Créer le zip en étant très strict sur les exclusions
           cd deploy_package
-          zip -r ../deployment.zip . \
-            -x "*.pyc" \
-            -x "*/__pycache__/*" \
-            -x "*/.git*" \
-            -x "*/.*" \
-            -x "*.log" \
-            -x "*.tmp" \
-            -x "*docker*" \
-            -x "*runner*" \
-            -x "*/venv/*" \
-            -x "venv/*" \
-            -x "*/site-packages/*" \
-            -x "*/proc/*" \
-            -x "*/sys/*" \
-            -x "*/dev/*"
+          # Exclure les fichiers inutiles du zip
+          zip -r ../deployment.zip . -x "*.pyc" "*/__pycache__/*" "*.git*"
           cd ..
           
-          echo "✅ Package créé avec succès"
+          echo "Package créé avec succès"
           ls -la deployment.zip
-          
-          # Vérifier le contenu du zip pour s'assurer qu'il n'y a pas de fichiers indésirables
-          echo "🔍 Vérification du contenu du zip :"
-          unzip -l deployment.zip | head -20
       
       - name: 'Deploy to Azure Web App (Tentative 1)'
         id: deploy-to-webapp
@@ -170,6 +125,7 @@ jobs:
           package: deployment.zip
           clean: true
           restart: true
+          timeout: 600000  # 10 minutes
         continue-on-error: true
 
       - name: 'Attendre avant retry en cas d echec'
@@ -188,6 +144,7 @@ jobs:
           package: deployment.zip
           clean: true
           restart: true
+          timeout: 600000  # 10 minutes
         continue-on-error: true
 
       - name: 'Attendre avant deuxième retry en cas d échec'
@@ -205,14 +162,15 @@ jobs:
           package: deployment.zip
           clean: true
           restart: true
+          timeout: 600000  # 10 minutes
 
       - name: 'Vérifier le statut final du déploiement'
         run: |
           if [[ "${{ steps.deploy-to-webapp.outcome }}" == "success" ]]; then
-            echo "✅ Déploiement réussi au premier essai"
+            echo "Déploiement réussi au premier essai"
           elif [[ "${{ steps.deploy-to-webapp-retry.outcome }}" == "success" ]]; then
-            echo "✅ Déploiement réussi au deuxième essai"
+            echo "Déploiement réussi au deuxième essai"
           else
-            echo "✅ Déploiement réussi au troisième essai"
+            echo "Déploiement réussi au troisième essai"
           fi
-          echo "🚀 Application déployée sur : https://segmentationimages-e6frgbbva2d3bebs.francecentral-01.azurewebsites.net"
+          echo "Application déployée sur : https://segmentationimages-e6frgbbva2d3bebs.francecentral-01.azurewebsites.net"
