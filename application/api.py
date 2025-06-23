@@ -105,7 +105,7 @@ class VGG16UNET_preent(nn.Module):
 app = FastAPI()
 
 # Charger le modèle sauvegardé
-model_path = Path(__file__).resolve().parent / 'vgg16_preent_sda_model.pth'
+model_path = Path(__file__).resolve().parent / 'vgg16unet_pt.pth'
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 try:
