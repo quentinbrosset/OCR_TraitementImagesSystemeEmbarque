@@ -2,7 +2,7 @@ name: Build and deploy Python app to Azure Web App
 
 env:
   AZURE_WEBAPP_NAME: SegmentationImages
-  PYTHON_VERSION: '3.12'
+  PYTHON_VERSION: '3.11'
 
 on:
   push:
@@ -71,7 +71,6 @@ jobs:
       
       - name: Zip application for deployment
         run: |
-          # Créer un package de déploiement optimisé
           mkdir -p deploy_package
           cp -r application deploy_package/
           cp requirements.txt deploy_package/
