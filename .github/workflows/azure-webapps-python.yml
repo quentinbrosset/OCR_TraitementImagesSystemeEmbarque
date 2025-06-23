@@ -68,6 +68,7 @@ jobs:
           fi
           EOF
           chmod +x startup.sh
+          sleep 30
       
       - name: Zip application for deployment
         run: |
