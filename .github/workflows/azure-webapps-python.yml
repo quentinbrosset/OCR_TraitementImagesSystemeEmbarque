@@ -50,18 +50,18 @@ jobs:
       - name: Check application structure
         run: |
           echo "📂 Structure du projet :"
-          find . -type f -name "*.py" | head -20
+          find . -type f -name "*.py" -not -path "./venv/*" | head -20
           ls -la application/
           
-          echo "🔍 Vérification de l'environnement runner :"
+          echo "🔍 Vérification de l'environnement :"
           echo "Répertoire de travail actuel :"
           pwd
-          echo "Contenu du répertoire racine :"
-          ls -la
-          echo "Processus Docker en cours (s'il y en a) :"
-          ps aux | grep docker | head -5 || echo "Aucun processus Docker trouvé"
-          echo "Fichiers système suspects :"
-          find . -maxdepth 2 -name "*docker*" -o -name "*runner*" 2>/dev/null | head -10 || echo "Aucun fichier suspect trouvé"
+          echo "Contenu du répertoire racine (sans venv) :"
+          ls -la | grep -v venv
+          echo "Taille du répertoire venv (s'il existe) :"
+          du -sh venv/ 2>/dev/null || echo "Pas de répertoire venv trouvé"
+          echo "Vérification des fichiers à déployer :"
+          find application/ -type f | head -10
       
       - name: Create startup script
         run: |
@@ -88,9 +88,12 @@ jobs:
           # Créer un répertoire temporaire propre
           mkdir -p deploy_package
           
-          # Copier SEULEMENT les fichiers nécessaires (éviter les liens symboliques et fichiers système)
+          # Copier SEULEMENT les fichiers nécessaires (éviter venv/ et autres)
           echo "📂 Copie des fichiers application..."
           cp -r application/ deploy_package/
+          
+          # Supprimer le venv s'il existe dans application/
+          rm -rf deploy_package/application/venv/ 2>/dev/null || true
           
           echo "📄 Copie des fichiers de configuration..."
           cp requirements.txt deploy_package/
@@ -143,6 +146,9 @@ jobs:
             -x "*.tmp" \
             -x "*docker*" \
             -x "*runner*" \
+            -x "*/venv/*" \
+            -x "venv/*" \
+            -x "*/site-packages/*" \
             -x "*/proc/*" \
             -x "*/sys/*" \
             -x "*/dev/*"
@@ -164,7 +170,6 @@ jobs:
           package: deployment.zip
           clean: true
           restart: true
-          timeout: 600000  # 10 minutes
         continue-on-error: true
 
       - name: 'Attendre avant retry en cas d echec'
@@ -183,7 +188,6 @@ jobs:
           package: deployment.zip
           clean: true
           restart: true
-          timeout: 600000  # 10 minutes
         continue-on-error: true
 
       - name: 'Attendre avant deuxième retry en cas d échec'
@@ -201,7 +205,6 @@ jobs:
           package: deployment.zip
           clean: true
           restart: true
-          timeout: 600000  # 10 minutes
 
       - name: 'Vérifier le statut final du déploiement'
         run: |
