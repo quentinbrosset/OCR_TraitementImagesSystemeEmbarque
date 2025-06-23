@@ -78,6 +78,7 @@ jobs:
           fi
           EOF
           chmod +x startup.sh
+          sleep 30
       
       - name: Zip application for deployment
         run: |
@@ -166,7 +167,7 @@ jobs:
           timeout: 600000  # 10 minutes
         continue-on-error: true
 
-      - name: 'Attendre avant retry en cas d\'échec'
+      - name: 'Attendre avant retry en cas d echec'
         if: steps.deploy-to-webapp.outcome == 'failure'
         run: |
           echo "Premier déploiement échoué, attente de 30 secondes avant retry..."
@@ -185,7 +186,7 @@ jobs:
           timeout: 600000  # 10 minutes
         continue-on-error: true
 
-      - name: 'Attendre avant deuxième retry en cas d\'échec'
+      - name: 'Attendre avant deuxième retry en cas d échec'
         if: steps.deploy-to-webapp-retry.outcome == 'failure'
         run: |
           echo "Deuxième déploiement échoué, attente de 60 secondes avant dernier retry..."
