@@ -147,7 +147,7 @@ jobs:
           timeout: 600000  # 10 minutes
         continue-on-error: true
 
-      - name: 'Attendre avant deuxième retry en cas d\'échec'
+      - name: 'Attendre avant deuxième retry en cas d échec'
         if: steps.deploy-to-webapp-retry.outcome == 'failure'
         run: |
           echo "Deuxième déploiement échoué, attente de 60 secondes avant dernier retry..."
