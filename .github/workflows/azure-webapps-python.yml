@@ -49,9 +49,19 @@ jobs:
       
       - name: Check application structure
         run: |
-          echo "Listing project structure:"
+          echo "📂 Structure du projet :"
           find . -type f -name "*.py" | head -20
           ls -la application/
+          
+          echo "🔍 Vérification de l'environnement runner :"
+          echo "Répertoire de travail actuel :"
+          pwd
+          echo "Contenu du répertoire racine :"
+          ls -la
+          echo "Processus Docker en cours (s'il y en a) :"
+          ps aux | grep docker | head -5 || echo "Aucun processus Docker trouvé"
+          echo "Fichiers système suspects :"
+          find . -maxdepth 2 -name "*docker*" -o -name "*runner*" 2>/dev/null | head -10 || echo "Aucun fichier suspect trouvé"
       
       - name: Create startup script
         run: |
@@ -71,13 +81,23 @@ jobs:
       
       - name: Zip application for deployment
         run: |
-          # Nettoyer d'abord les anciens fichiers
+          # Nettoyer complètement l'environnement
           rm -rf deploy_package deployment.zip
           
+          # Créer un répertoire temporaire propre
           mkdir -p deploy_package
-          cp -r application deploy_package/
+          
+          # Copier SEULEMENT les fichiers nécessaires (éviter les liens symboliques et fichiers système)
+          echo "📂 Copie des fichiers application..."
+          cp -r application/ deploy_package/
+          
+          echo "📄 Copie des fichiers de configuration..."
           cp requirements.txt deploy_package/
           cp startup.sh deploy_package/
+          
+          # Nettoyer le répertoire application des fichiers indésirables
+          find deploy_package/application/ -name "*.pyc" -delete
+          find deploy_package/application/ -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
           
           # Ajouter un fichier .deployment pour Azure
           cat > deploy_package/.deployment << 'EOF'
@@ -107,13 +127,32 @@ jobs:
           </configuration>
           EOF
           
+          # Vérifier le contenu avant compression
+          echo "🔍 Contenu du package de déploiement :"
+          find deploy_package/ -type f | sort
+          
+          # Créer le zip en étant très strict sur les exclusions
           cd deploy_package
-          # Exclure les fichiers inutiles du zip
-          zip -r ../deployment.zip . -x "*.pyc" "*/__pycache__/*" "*.git*"
+          zip -r ../deployment.zip . \
+            -x "*.pyc" \
+            -x "*/__pycache__/*" \
+            -x "*/.git*" \
+            -x "*/.*" \
+            -x "*.log" \
+            -x "*.tmp" \
+            -x "*docker*" \
+            -x "*runner*" \
+            -x "*/proc/*" \
+            -x "*/sys/*" \
+            -x "*/dev/*"
           cd ..
           
-          echo "Package créé avec succès"
+          echo "✅ Package créé avec succès"
           ls -la deployment.zip
+          
+          # Vérifier le contenu du zip pour s'assurer qu'il n'y a pas de fichiers indésirables
+          echo "🔍 Vérification du contenu du zip :"
+          unzip -l deployment.zip | head -20
       
       - name: 'Deploy to Azure Web App (Tentative 1)'
         id: deploy-to-webapp
