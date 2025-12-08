@@ -18,7 +18,11 @@ st.set_page_config(
 st.title("Visualisation de la Segmentation d'une image")
 
 # URL de l'API
-API_URL = "http://localhost:8000"
+import os
+
+# URL de l'API
+# Récupère l'URL depuis les variables d'environnement (pour le Cloud) ou utilise localhost par défaut
+API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
 # Option pour choisir la transparence du masque superposé
 alpha = st.sidebar.slider("Transparence du masque", min_value=0.0, max_value=1.0, value=0.5, step=0.01)
