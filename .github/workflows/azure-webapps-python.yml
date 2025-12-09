@@ -49,85 +49,39 @@ jobs:
       
       - name: Check application structure
         run: |
-          echo "📂 Structure du projet (SANS VENV) :"
+          echo "Structure du projet (SANS VENV) :"
           find . -type f -name "*.py" -not -path "./venv/*" | head -20
           ls -la application/
           
-          echo "🔍 Vérification environnement :"
+          echo "Verification environnement :"
           echo "Taille du venv (s'il existe) :"
           du -sh venv/ 2>/dev/null || echo "Pas de venv trouvé"
-          echo "Fichiers à déployer dans application/ :"
+          echo "Fichiers a deployer dans application/ :"
           find application/ -type f | head -10
-      
-      - name: Create startup script
-        run: |
-          cat > startup.sh << 'EOF'
-          #!/bin/bash
-          cd /home/site/wwwroot
-          # Démarrer soit l'API soit l'app Streamlit selon la variable d'environnement
-          if [ "$APP_TYPE" = "api" ]; then
-            echo "Starting FastAPI application..."
-            python -m uvicorn application.api:app --host 0.0.0.0 --port 8000
-          else
-            echo "Starting Streamlit application..."
-            streamlit run application/app.py --server.port 8000 --server.address 0.0.0.0
-          fi
-          EOF
-          chmod +x startup.sh
-          sleep 30
       
       - name: Zip application for deployment
         run: |
-          # Nettoyer complètement l'environnement
+          # Nettoyer completement l'environnement
           rm -rf deploy_package deployment.zip
           
           mkdir -p deploy_package
           
-          # Copier SEULEMENT les fichiers nécessaires (ÉVITER VENV)
-          echo "📂 Copie application/ (sans venv)..."
+          # Copier SEULEMENT les fichiers necessaires (EVITER VENV)
+          echo "Copie application/ (sans venv)..."
           cp -r application/ deploy_package/
           
           # SUPPRIMER le venv s'il existe
           rm -rf deploy_package/application/venv/ 2>/dev/null || true
           
-          echo "📄 Copie des fichiers de configuration..."
+          echo "Copie des fichiers de configuration..."
           cp requirements.txt deploy_package/
-          cp startup.sh deploy_package/
           
-          # Nettoyer les fichiers Python indésirables
+          # Nettoyer les fichiers Python indesirables
           find deploy_package/application/ -name "*.pyc" -delete
           find deploy_package/application/ -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
           
-          # Ajouter un fichier .deployment pour Azure
-          cat > deploy_package/.deployment << 'EOF'
-          [config]
-          command = startup.sh
-          EOF
-          
-          # Créer un web.config optimisé pour Azure
-          cat > deploy_package/web.config << 'EOF'
-          <?xml version="1.0" encoding="utf-8"?>
-          <configuration>
-            <system.webServer>
-              <handlers>
-                <add name="PythonHandler" path="*" verb="*" modules="httpPlatformHandler" resourceType="Unspecified"/>
-              </handlers>
-              <httpPlatform processPath="%HOME%\site\wwwroot\startup.sh"
-                            arguments=""
-                            stdoutLogEnabled="true"
-                            stdoutLogFile="%HOME%\LogFiles\stdout.log"
-                            startupTimeLimit="120"
-                            requestTimeout="00:04:00">
-                <environmentVariables>
-                  <environmentVariable name="PYTHONPATH" value="%HOME%\site\wwwroot" />
-                </environmentVariables>
-              </httpPlatform>
-            </system.webServer>
-          </configuration>
-          EOF
-          
-          # Vérifier le contenu AVANT compression
-          echo "🔍 Contenu du package :"
+          # Verifier le contenu AVANT compression
+          echo "Contenu du package :"
           find deploy_package/ -type f | sort
           
           cd deploy_package
@@ -147,11 +101,11 @@ jobs:
             -x "*/lib/python*/*"
           cd ..
           
-          echo "✅ Package créé avec succès (SANS VENV)"
+          echo "Package crée avec succes (SANS VENV)"
           ls -la deployment.zip
           
-          # Vérifier le contenu final
-          echo "🔍 Contenu du ZIP final :"
+          # Verifier le contenu final
+          echo "Contenu du ZIP final :"
           unzip -l deployment.zip | head -20
       
       - name: 'Deploy to Azure Web App (Tentative 1)'
@@ -168,7 +122,7 @@ jobs:
       - name: 'Attendre avant retry en cas d echec'
         if: steps.deploy-to-webapp.outcome == 'failure'
         run: |
-          echo "Premier déploiement échoué, attente de 30 secondes avant retry..."
+          echo "Premier deploiement echoué, attente de 30 secondes avant retry..."
           sleep 30
 
       - name: 'Deploy to Azure Web App (Tentative 2 - Retry)'
@@ -183,10 +137,10 @@ jobs:
           restart: true
         continue-on-error: true
 
-      - name: 'Attendre avant deuxième retry en cas d échec'
+      - name: 'Attendre avant deuxieme retry en cas d echec'
         if: steps.deploy-to-webapp-retry.outcome == 'failure'
         run: |
-          echo "Deuxième déploiement échoué, attente de 60 secondes avant dernier retry..."
+          echo "Deuxieme deploiement echoué, attente de 60 secondes avant dernier retry..."
           sleep 60
 
       - name: 'Deploy to Azure Web App (Tentative 3 - Dernier retry)'
@@ -199,13 +153,13 @@ jobs:
           clean: true
           restart: true
 
-      - name: 'Vérifier le statut final du déploiement'
+      - name: 'Verifier le statut final du deploiement'
         run: |
           if [[ "${{ steps.deploy-to-webapp.outcome }}" == "success" ]]; then
-            echo "Déploiement réussi au premier essai"
+            echo "Deploiement reussi au premier essai"
           elif [[ "${{ steps.deploy-to-webapp-retry.outcome }}" == "success" ]]; then
-            echo "Déploiement réussi au deuxième essai"
+            echo "Deploiement reussi au deuxieme essai"
           else
-            echo "Déploiement réussi au troisième essai"
+            echo "Deploiement reussi au troisieme essai"
           fi
-          echo "Application déployée sur : https://segmentationimages-e6frgbbva2d3bebs.francecentral-01.azurewebsites.net"
+          echo "Application deployée sur : https://segmentationimages-e6frgbbva2d3bebs.francecentral-01.azurewebsites.net"
